@@ -30,7 +30,7 @@ const state = {
   fix: null, prevFix: null, geoError: null, watching: false,
   measuring: null, // {start, samples, timer}
   map: null, mapLayers: null,
-  guide: LS.get('wp.guide', { ctrl: 'rc', done: {} }),
+  guide: LS.get('wp.guide', { ctrl: 'solo', done: {} }),
   editIndex: -1,
 };
 if (!state.missions.length) state.missions.push(newMission());
@@ -609,7 +609,7 @@ function guideSteps(ctrl) {
       body: `<ol><li>조종기를 켜고 <b>USB-C 케이블</b>로 PC에 연결 (충전 전용 케이블은 안 됨)</li>
         <li>조종기 화면에 USB 알림이 뜨면 <b>파일 전송</b> 선택</li>
         <li>PC 파일 탐색기에서 이동:</li></ol>
-        ${P('내 PC', 'DJI RC 2 (조종기 이름)', '내부 저장소', 'Android', 'data', 'dji.go.v5', 'files', 'waypoint')}
+        ${P('내 PC', 'DJI RC PRO 2 (조종기 이름)', '내부 저장소', 'Android', 'data', 'dji.go.v5', 'files', 'waypoint')}
         <ol start="4"><li>보기를 <b>자세히</b>로 바꾸고 <b>수정한 날짜</b>로 정렬 → <b>가장 최근 폴더</b> 열기<br>
         <small class="muted">(예: 1A2B3C4D-…처럼 긴 이름 — 폴더 안에 같은 이름의 .kmz와 image 폴더가 있음)</small></li>
         <li>안에 있는 <b>.kmz 파일</b>(폴더와 같은 긴 이름)을 PC 바탕화면으로 <b>복사</b></li></ol>
@@ -658,7 +658,56 @@ function guideSteps(ctrl) {
       <li>기체 연결 → 이륙 지점이 계획과 같은지 확인 → 미션 시작</li></ol>
       <div class="tip">✈️ 첫 비행은 낮은 속도로, 장애물 회피 켜고, 눈으로 기체를 보면서 진행하세요. 비행금지·제한구역과 고도 제한(150m)을 확인하세요.</div>`,
   };
+  if (ctrl === 'solo') return soloSteps(dummy, fly);
   return [field, dummy, findPath, tpl, build, replace, fly];
+}
+
+// RC Pro 2 단독: 조종기 브라우저 + Total Commander로 PC 없이 처리
+function soloSteps(dummy, fly) {
+  const WP = P('내부 저장소', 'Android', 'data', 'dji.go.v5', 'files', 'waypoint');
+  return [
+    {
+      id: 'solo-setup', where: '최초 1회', title: '준비물 확인',
+      body: `<ul><li>조종기에 <b>Total Commander</b> 설치 (조종기에 플레이스토어가 없어 PC에서 adb로 한 번 설치)</li>
+        <li>처음 <b>Android › data</b>를 열 때 나오는 시스템 화면에서 <b>“이 폴더 사용” → “허용”</b></li>
+        <li>조종기 브라우저로 이 앱 주소를 열어 두기</li></ul>`,
+    },
+    {
+      id: 'field', where: '조종기 · 현장', title: '현장에서 웨이포인트 등록',
+      body: `<ol><li>조종기 브라우저로 이 앱을 열고 <b>등록</b> 탭에서 위치 권한 허용</li>
+        <li>지점마다 이동 → GPS가 <b style="color:var(--ok)">초록</b>이 될 때까지 대기 → 높이 확인 → <b>📍 이 위치 등록</b></li>
+        <li>차량이면 <b>정차 후</b> 등록. 최소 2개 이상.</li></ol>`,
+      action: ['등록 탭으로', 'register'],
+    },
+    { ...dummy, where: '조종기' },
+    {
+      id: 'copy', where: '조종기 · Total Commander', title: '더미 파일을 Download로 복사',
+      body: `<ol><li>Total Commander에서 이동:</li></ol>${WP}
+        <ol start="2"><li>가장 최근 폴더(긴 영문·숫자 이름)를 열고 안의 <b>.kmz</b>를 길게 눌러 <b>복사</b></li>
+        <li>대상 폴더로 <b>내부 저장소 › Download</b>를 골라 붙여넣기</li></ol>
+        <div class="tip">💡 템플릿은 한 번 넣으면 앱이 기억합니다. 같은 더미 미션에 계속 덮어쓸 거라면 이 단계와 다음 단계는 처음 한 번만 하면 됩니다.</div>`,
+    },
+    {
+      id: 'tpl', where: '조종기 · 브라우저', title: '템플릿 넣기',
+      body: `<ol><li>이 앱의 <b>내보내기</b> 탭 › <b>📂 템플릿 KMZ 선택</b> › <b>Download</b>에 복사한 .kmz 선택</li>
+        <li>“템플릿 준비됨”이 뜨면 완료</li></ol>`,
+      action: ['내보내기 탭으로', 'export'],
+    },
+    {
+      id: 'build', where: '조종기 · 브라우저', title: 'KMZ 만들기',
+      body: `<ol><li>먼저 Total Commander에서 <b>Download</b>에 남아 있는 <b>같은 이름의 옛 .kmz를 삭제</b> (그래야 이름 뒤에 “(1)”이 붙지 않음)</li>
+        <li>미션 설정 확인 후 <b>📦 KMZ 만들기</b> → <b>Download</b>에 템플릿과 같은 이름으로 저장</li></ol>`,
+      action: ['내보내기 탭으로', 'export'],
+    },
+    {
+      id: 'replace', where: '조종기 · Total Commander', title: '원래 폴더에 덮어쓰기',
+      body: `<ol><li><b>Download</b>의 새 .kmz를 길게 눌러 <b>복사</b></li>
+        <li>대상: 아래 경로의 <b>파일 이름과 같은 폴더</b></li></ol>${WP}
+        <ol start="3"><li><b>덮어쓰기</b> 선택 → 폴더 안에 .kmz가 하나뿐이고 이름이 같은지 확인</li></ol>
+        <div class="tip">⚠️ 다른 폴더(다른 미션)에 넣으면 목록에 안 나타나거나 엉뚱한 미션이 바뀝니다. Android/data 안의 다른 파일은 건드리지 마세요.</div>`,
+    },
+    { ...fly, where: '조종기' },
+  ];
 }
 function markGuide(id) {
   const d = (state.guide.done[state.guide.ctrl] ||= []);

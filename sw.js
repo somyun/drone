@@ -1,5 +1,5 @@
 // 오프라인 지원: 앱 파일은 네트워크 우선, 실패 시 캐시 (현장 통신 불량 대비)
-const CACHE = 'field-wp-v2';
+const CACHE = 'field-wp-v3';
 const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/wpml.js', 'js/zip.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 self.addEventListener('install', (e) => {
