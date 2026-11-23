@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>현장 웨이포인트</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="missionBtn" class="mission-btn" aria-label="미션 선택">
+      <span class="mission-label">미션</span>
+      <span id="missionName" class="mission-name">-</span>
+      <span class="chev">▾</span>
+    </button>
+    <button id="helpBtn" class="icon-btn" aria-label="튜토리얼 다시 보기">?</button>
+  </header>
+
+  <main>
+    <!-- 1. 현장 등록 -->
+    <section id="tab-register" class="tab active">
+      <div id="hint" class="hint">위치 권한을 허용해 주세요.</div>
+
+      <div class="card gps-card" id="gpsCard">
+        <div class="gps-row">
+          <span id="gpsDot" class="dot dot-off"></span>
+          <div class="gps-main">
+            <div class="gps-acc"><span id="gpsAcc">--</span><small> 정확도</small></div>
+            <div id="gpsSub" class="gps-sub">GPS 대기 중</div>
+          </div>
+          <div class="gps-side">
+            <div><small>이동</small> <b id="gpsSpeed">-</b></div>
+            <div><small>이전 지점</small> <b id="gpsPrev">-</b></div>
+          </div>
+        </div>
+        <div class="acc-bar"><div id="accBar"></div></div>
+      </div>
+
+      <div class="card" id="heightCard">
+        <label class="lbl">비행 높이 <small>(이륙 지점 기준, m)</small></label>
+        <div class="stepper">
+          <button data-step="-10">−10</button>
+          <button data-step="-1">−1</button>
+          <input id="heightInput" type="number" inputmode="decimal" min="2" max="500" step="1" value="30">
+          <button data-step="1">+1</button>
+          <button data-step="10">+10</button>
+        </div>
+        <div class="chips" id="heightChips">
+          <button data-h="20">20</button><button data-h="30">30</button><button data-h="50">50</button>
+          <button data-h="80">80</button><button data-h="100">100</button><button data-h="120">120</button>
+        </div>
+        <div id="terrainHint" class="terrain-hint hidden"></div>
+      </div>
+
+      <div class="card" id="actionCard">
+        <label class="lbl">이 지점에서 할 동작</label>
+        <div class="chips seg" id="actionChips">
+          <button data-a="none" class="on">없음</button>
+          <button data-a="photo">사진</button>
+          <button data-a="startRecord">녹화시작</button>
+          <button data-a="stopRecord">녹화종료</button>
+          <button data-a="hover">대기</button>
+        </div>
+        <div class="row gimbal-row">
+          <label class="lbl-inline">짐벌 각도</label>
+          <input id="gimbalInput" type="range" min="-90" max="0" step="5" value="-30">
+          <b id="gimbalVal">-30°</b>
+        </div>
+        <div class="row hidden" id="hoverRow">
+          <label class="lbl-inline">대기 시간</label>
+          <input id="hoverInput" type="number" inputmode="numeric" min="1" max="60" value="5"> 초
+        </div>
+      </div>
+
+      <div class="register-wrap">
+        <label class="precise"><input type="checkbox" id="preciseChk" checked> 정밀 등록 (5초 평균)</label>
+        <button id="registerBtn" class="register-btn" disabled>
+          <svg id="progressRing" viewBox="0 0 100 100" class="ring hidden"><circle cx="50" cy="50" r="46"/></svg>
+          <span id="registerText">📍 이 위치 등록</span>
+          <small id="registerSub">WP 1</small>
+        </button>
+        <div class="row-btns">
+          <button id="undoBtn" class="ghost" disabled>↶ 마지막 지점 취소</button>
+          <button id="takeoffBtn" class="ghost">🛫 이륙 지점 기록</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 목록 / 지도 -->
+    <section id="tab-list" class="tab">
+      <div id="map" class="map"><div class="map-fallback">지도를 불러오는 중… (오프라인이면 지도 없이 목록만 표시됩니다)</div></div>
+      <div class="stats" id="stats"></div>
+      <ol id="wpList" class="wp-list"></ol>
+      <p class="empty" id="listEmpty">아직 등록된 지점이 없습니다. <b>등록</b> 탭에서 현장 위치를 등록하세요.</p>
+    </section>
+
+    <!-- 3. 내보내기 -->
+    <section id="tab-export" class="tab">
+      <div class="card">
+        <h3>① 미션 설정</h3>
+        <div class="form-grid">
+          <label>비행 속도 (m/s)<input id="setSpeed" type="number" inputmode="decimal" min="1" max="15" step="0.5"></label>
+          <label>완료 후 동작
+            <select id="setFinish">
+              <option value="goHome">자동 귀환(RTH)</option>
+              <option value="noAction">마지막 지점에서 호버링</option>
+              <option value="autoLand">마지막 지점에 착륙</option>
+              <option value="gotoFirstWaypoint">첫 지점으로 복귀</option>
+            </select>
+          </label>
+          <label>신호 끊김 시
+            <select id="setRcLost">
+              <option value="goBack">귀환</option>
+              <option value="hover">호버링</option>
+              <option value="landing">착륙</option>
+              <option value="continue">미션 계속 진행</option>
+            </select>
+          </label>
+          <label>경로 방식
+            <select id="setPath">
+              <option value="keep">DJI Fly 기본 (지점마다 정지)</option>
+              <option value="curve">부드러운 곡선 통과 (실험적)</option>
+              <option value="straight">직선 (실험적)</option>
+            </select>
+          </label>
+          <label>기수 방향
+            <select id="setHeading">
+              <option value="path">진행 방향 바라보기</option>
+              <option value="keep">템플릿 첫 지점 방향 고정</option>
+            </select>
+          </label>
+          <label>기본 높이 (m)<input id="setDefH" type="number" inputmode="decimal" min="2" max="500"></label>
+          <label>기본 짐벌 각도 (°)<input id="setDefG" type="number" inputmode="numeric" min="-90" max="0"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>② DJI Fly 템플릿 KMZ <span class="badge" id="tplBadge">없음</span></h3>
+        <p class="small">조종기 DJI Fly에서 만든 <b>더미 웨이포인트 미션 파일(.kmz)</b>을 넣어 주세요. 기체 정보·형식은 그대로 두고 웨이포인트만 교체합니다. 처음이면 <a href="#" data-goto="guide">가이드</a>를 따라 하세요.</p>
+        <label class="file-btn">📂 템플릿 KMZ 선택<input id="tplInput" type="file" accept=".kmz,application/vnd.google-earth.kmz,application/zip,application/octet-stream"></label>
+        <div id="tplInfo" class="tpl-info hidden"></div>
+        <label class="row small"><input type="checkbox" id="tplRemember" checked> 이 기기에 템플릿 저장(다음에도 사용)</label>
+        <details class="small adv">
+          <summary>템플릿 없이 생성 (실험적)</summary>
+          <p>RC 2에서 받은 실제 미션 파일 구조(기체 코드 68)를 흉내 내 만듭니다. 다만 DJI Fly가 만든 파일을 템플릿으로 쓰는 쪽이 가장 확실합니다.</p>
+          <label>droneEnumValue <input id="droneEnum" type="text" inputmode="numeric" placeholder="68"></label>
+          <label>파일 이름 <input id="outName" type="text" placeholder="DJI Fly 미션 파일 이름과 같게"></label>
+        </details>
+      </div>
+
+      <div class="card">
+        <h3>③ 검사 & 생성</h3>
+        <ul id="checks" class="checks"></ul>
+        <button id="buildBtn" class="primary big">📦 KMZ 만들기</button>
+        <div id="buildResult" class="build-result hidden"></div>
+      </div>
+
+      <div class="card">
+        <h3>미션 백업 / 다른 기기로 옮기기</h3>
+        <p class="small">현장(스마트폰)에서 등록한 미션을 PC로 옮길 때 사용하세요. 카카오톡 ‘나에게 보내기’, 메일, 클라우드 등으로 전달 가능합니다.</p>
+        <div class="row-btns">
+          <button id="exportJsonBtn" class="ghost">⬇ 미션 파일(.json) 저장/공유</button>
+          <label class="ghost file-btn-sm">⬆ 미션 파일 불러오기<input id="importJson" type="file" accept=".json,application/json"></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 가이드 -->
+    <section id="tab-guide" class="tab">
+      <div class="guide-head">
+        <h2>DJI Fly에 넣는 방법</h2>
+        <p class="small">DJI Fly는 공식적인 파일 가져오기 기능이 없어서, <b>더미 미션을 만든 뒤 그 파일을 바꿔치기</b>하는 방식을 씁니다. 단계를 따라가며 체크하세요.</p>
+        <div class="seg chips" id="ctrlChips">
+          <button data-c="rc" class="on">DJI RC 2 / RC Pro 2</button>
+          <button data-c="ios">iPhone + RC-N</button>
+          <button data-c="android">안드로이드폰 + RC-N</button>
+        </div>
+        <div class="guide-progress"><div id="guideBar"></div></div>
+      </div>
+      <ol id="guideSteps" class="guide-steps"></ol>
+      <div class="card trouble">
+        <h3>잘 안 될 때</h3>
+        <ul class="small">
+          <li><b>미션 목록에 안 보임</b> → 다른 폴더의 파일을 바꿨을 가능성이 큽니다. waypoint 폴더를 <b>수정한 날짜순</b>으로 정렬해 가장 최근 폴더를 쓰세요. DJI Fly를 완전히 종료 후 다시 실행하세요.</li>
+          <li><b>미션이 비어 보임</b> → 파일 이름이 원래 이름과 <b>완전히 같은지</b>(대소문자, 확장자 .kmz) 확인하세요. 브라우저가 이름 뒤에 “(1)”을 붙였을 수 있습니다.</li>
+          <li><b>높이가 이상함</b> → 높이는 <b>이륙 지점 기준</b>입니다. 이륙 지점보다 지면이 높은 곳(언덕·옥상)은 그만큼 더해야 합니다.</li>
+          <li><b>DJI Fly 업데이트 후 안 됨</b> → 이 방식은 비공식이라 앱 업데이트로 막힐 수 있습니다. 새 더미 미션으로 템플릿을 다시 받아 보세요.</li>
+          <li>첫 비행은 반드시 <b>안전한 장소에서 낮은 속도</b>로 미리보기 후 진행하고, 장애물 회피는 켜 두세요.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="register" class="active"><span>📍</span>등록</button>
+    <button data-tab="list"><span>🗺️</span>목록<em id="countBadge" class="count hidden">0</em></button>
+    <button data-tab="export"><span>📦</span>내보내기</button>
+    <button data-tab="guide"><span>🧭</span>가이드</button>
+  </nav>
+
+  <!-- 미션 선택 시트 -->
+  <div id="sheet" class="sheet hidden">
+    <div class="sheet-body">
+      <h3>미션</h3>
+      <ul id="missionList" class="mission-list"></ul>
+      <div class="row-btns">
+        <button id="newMissionBtn" class="primary">＋ 새 미션</button>
+        <button id="renameMissionBtn" class="ghost">이름 변경</button>
+        <button id="deleteMissionBtn" class="ghost danger">삭제</button>
+      </div>
+      <button class="ghost close-sheet" data-close>닫기</button>
+    </div>
+  </div>
+
+  <!-- 웨이포인트 편집 시트 -->
+  <div id="editSheet" class="sheet hidden">
+    <div class="sheet-body">
+      <h3 id="editTitle">WP</h3>
+      <div class="form-grid">
+        <label>높이 (m)<input id="eHeight" type="number" inputmode="decimal" min="2" max="500"></label>
+        <label>짐벌 각도 (°)<input id="eGimbal" type="number" inputmode="numeric" min="-90" max="0" placeholder="기본값"></label>
+        <label>동작
+          <select id="eAction">
+            <option value="none">없음</option><option value="photo">사진 촬영</option>
+            <option value="startRecord">녹화 시작</option><option value="stopRecord">녹화 종료</option>
+            <option value="hover">대기(호버링)</option>
+          </select>
+        </label>
+        <label>대기 시간 (초)<input id="eHover" type="number" inputmode="numeric" min="1" max="60"></label>
+        <label>기수 방향 (°)<input id="eHeading" type="number" inputmode="decimal" min="-180" max="360" placeholder="진행 방향"></label>
+        <label class="full">메모<input id="eMemo" type="text" placeholder="예: 3번 송전탑 남측"></label>
+      </div>
+      <p id="eInfo" class="small muted"></p>
+      <div class="row-btns">
+        <button id="eUp" class="ghost">▲ 앞으로</button>
+        <button id="eDown" class="ghost">▼ 뒤로</button>
+        <button id="eDelete" class="ghost danger">삭제</button>
+      </div>
+      <div class="row-btns">
+        <button id="eSave" class="primary">저장</button>
+        <button class="ghost" data-close>취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 튜토리얼 코치마크 -->
+  <div id="coach" class="coach hidden">
+    <div id="coachHole" class="coach-hole"></div>
+    <div id="coachBox" class="coach-box">
+      <div class="coach-step" id="coachStep"></div>
+      <h4 id="coachTitle"></h4>
+      <p id="coachText"></p>
+      <div class="row-btns">
+        <button id="coachSkip" class="ghost">건너뛰기</button>
+        <button id="coachNext" class="primary">다음</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

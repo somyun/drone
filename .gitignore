@@ -1,0 +1,6 @@
+# 실제 미션 파일(위치 정보 포함)은 올리지 않음
+*.kmz
+_test/
+.claude/
+Thumbs.db
+desktop.ini
